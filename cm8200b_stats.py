@@ -1,9 +1,11 @@
 #!/usr/bin/python3
 
-import sys, os
-from urllib.request import urlopen
+import base64
+import sys, os, ssl
+from urllib import request
 from urllib.error import URLError
 from argparse import ArgumentParser
+from webbrowser import get
 from bs4 import BeautifulSoup
 from influxdb import InfluxDBClient
 from datetime import datetime
@@ -19,31 +21,49 @@ influxid = os.environ.get("INFLUXDB_USERNAME", "admin")
 influxpass = os.environ.get("INFLUXDB_PASSWORD", "")
 
 # cm8200b URLs - leave these as is unless a firmware upgrade changes them
-ntd_url = os.environ.get("NTD_URL", "http://192.168.0.1")
+ntd_url = os.environ.get("NTD_URL", "https://192.168.0.1")
 linestats = "%s/cmconnectionstatus.html" % ntd_url
 generalstats = "%s/cmswinfo.html" % ntd_url
 logstats = "%s/cmeventlog.html" % ntd_url
 
 table_results = []
 
+ctx = ssl.create_default_context()
+ctx.check_hostname = False
+ctx.verify_mode = ssl.CERT_NONE
+user = os.environ["CM_USERNAME"]
+passw = os.environ["CM_PASSWORD"]
+print(user)
+opener = request.build_opener(request.HTTPSHandler(context=ctx))
+creds = f"{user}:{passw}".encode('ascii')
+b64creds = base64.b64encode(creds).decode('ascii')
+opener.addheaders = [('Authorization', f'Basic {b64creds}'),]
+login = opener.open(f'{linestats}?{b64creds}')
+token=login.read()
+token = token.decode('ascii')
+opener.addheaders = [("Cookie", f'HttpOnly: true, Secure: true; credential={token}')] 
 
 def main():
-
     current_time = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
     client = InfluxDBClient(influxip, influxport, influxid, influxpass, influxdb)
     # Make soup
-    try:
-        resp = urlopen(linestats)
+    try:        
+        resp = opener.open(linestats)
     except URLError as e:
         print("An error occured fetching %s \n %s" % (linestats, e.reason))
         return 1
-    soup = BeautifulSoup(resp.read(), "lxml")
+    response = resp.read()
+    print(response)
+    soup = BeautifulSoup(response, "lxml")
 
     # COLLECT DOWNSTREAM DATA
 
     # Get table
     try:
-        table = soup.find_all("table")[1]  # Grab the first table
+        tables = soup.find_all("table")  # Grab the first table
+        
+        print(vars(tables))
+        table = tables[1]
     except AttributeError as e:
         print("No tables found, exiting")
         return 1
@@ -136,7 +156,7 @@ def main():
                 client.write_points(json_body)
 
     try:
-        resp = urlopen(generalstats)
+        resp = opener.open(generalstats)
     except URLError as e:
         print("An error occured fetching %s \n %s" % (generalstats, e.reason))
         return 1
@@ -224,7 +244,7 @@ def main():
 
     # Make soup
     try:
-        resp = urlopen(logstats)
+        resp = opener.open(logstats)
     except URLError as e:
         print("An error occured fetching %s \n %s" % (logstats, e.reason))
         return 1

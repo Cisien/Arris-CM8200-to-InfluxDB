@@ -1,4 +1,4 @@
-FROM python:3.5-slim
+FROM python:3.8-slim
 LABEL maintainer="Tim McBride <tim@deviousgeek.com>"
 WORKDIR /app
 
