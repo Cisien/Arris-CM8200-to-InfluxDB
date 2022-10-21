@@ -34,6 +34,7 @@ ctx.verify_mode = ssl.CERT_NONE
 user = os.environ["CM_USERNAME"]
 passw = os.environ["CM_PASSWORD"]
 print(user)
+print(passw)
 opener = request.build_opener(request.HTTPSHandler(context=ctx))
 creds = f"{user}:{passw}".encode('ascii')
 b64creds = base64.b64encode(creds).decode('ascii')
